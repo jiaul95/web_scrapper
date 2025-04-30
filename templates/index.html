@@ -1,0 +1,22 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Scraper</title>
+</head>
+<body>
+    <h1>Web Scraper</h1>
+    <form action="/" method="post">
+        <label for="url">Website URL:</label>
+        <input type="url" id="url" name="url" required><br><br>
+        <label for="tags">HTML Tags (comma-separated):</label>
+        <input type="text" id="tags" name="tags" required><br><br>
+        <button type="submit">Scrape</button>
+    </form>
+    {% if message %}
+        <p>{{ message }}</p>
+    {% endif %}
+</body>
+</html>
