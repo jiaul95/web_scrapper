@@ -1,157 +1,180 @@
 from db_setup import connect_to_db
 from playwright.sync_api import sync_playwright
 import time
+from itertools import zip_longest
 
-
-def save_to_db(conn, company_name, email, phone):
+def save_to_db(conn, company_name, email, phone,url):
     try:
         cursor = conn.cursor()
         insert_query = """
-            INSERT INTO distributors_contacts (company_name, email, phone)
-            VALUES (%s, %s, %s)
+            INSERT INTO distributors_contacts (compnay_url,company_name, email, phone)
+            VALUES (%s, %s, %s, %s)
         """
-        cursor.execute(insert_query, (company_name, email, phone))
+        cursor.execute(insert_query, (url,company_name, email, phone))
         conn.commit()
         print("Data inserted successfully.")
     except Exception as e:
         print(f"Error inserting data: {e}")
 
 
-def categorize_tags(tags):
-    company_tags, phone_tags, email_tags = [], [], []
-
-    for tag in tags:
-        tag_lower = tag.lower()
-
-        if any(kw in tag_lower for kw in ['company', 'comp']) or any(tag_lower.startswith(h) for h in ['h1', 'h2', 'h3']):
-            company_tags.append(tag)
-        elif 'tel' in tag_lower or 'phone' in tag_lower or "href^='tel" in tag_lower:
-            phone_tags.append(tag)
-        elif 'email' in tag_lower or 'mailto' in tag_lower or "href^='mailto" in tag_lower:
-            email_tags.append(tag)
-
-    if not company_tags:
-        company_tags.append("h3.moHeading")
-    if not phone_tags:
-        phone_tags.append("a[href^='tel']")
-    if not email_tags:
-        email_tags.append("a[href^='mailto']")
-
-    return company_tags, phone_tags, email_tags
+def extract_value(block, selector, attr='text'):
+    values = []  # List to store values
+    try:
+        locator = block.locator(selector)
+        count = locator.count()
+        if count > 0:
+            for i in range(count):
+                el = locator.nth(i)
+                if attr == 'href':
+                    values.append(el.get_attribute('href').strip())
+                else:
+                    values.append(el.inner_text().strip())
+    except Exception as e:
+        print(f"Error extracting value for selector {selector}: {e}")
+    return values  # Return a list of values
 
 
-def extract_value(block, selectors, attr='text'):
-    for selector in selectors:
-        try:
-            locator = block.locator(selector)
-            count = locator.count()
-            if count > 0:
-                for i in range(count):
-                    el = locator.nth(i)
-                    href = el.get_attribute('href') if attr == 'href' else None
+def extract_contact_from_page(page):
+    # This function extracts phone and email from an individual company's page.
+    phones = extract_value(page, "a[href^='tel']")
+    emails = extract_value(page, "a[href^='mailto']")
+    return phones, emails
 
-                    # If we want phone numbers: ensure href is tel:
-                    if attr == 'phone':
-                        if href and href.startswith('tel:'):
-                            return el.inner_text().strip()
-                    elif attr == 'email':
-                        if href and href.startswith('mailto:'):
-                            return el.inner_text().strip()
-                    elif attr == 'href':
-                        return href.strip()
-                    else:
-                        return el.inner_text().strip()
-        except:
-            continue
-    return None
-
-
-
-def extract_multiple_contacts(url, tags, conn):
-    from playwright.sync_api import sync_playwright
-    import time
-
-    company_tags, phone_tags, email_tags = categorize_tags(tags)
+def extract_multiple_contacts(url, conn, block_selector=None):
+    block_selector = block_selector
+    # print(f"block_selector: {block_selector}")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
-        print(f"Opening URL: {url}")
-        page.goto(url)
+        # print(f"Opening URL: {url}")
+        page.goto(url,timeout=60000)
         page.wait_for_load_state("domcontentloaded")
         time.sleep(3)
 
-        # Try clicking "View More" if it exists
+        # try:
+        #     while True:
+        #         view_more_button = page.locator("div.more-cat-link p:has-text('View More')")
+        #         if view_more_button and view_more_button.is_visible():
+        #             print("Clicking 'View More' button...")
+        #             view_more_button.click()
+        #             time.sleep(2)
+        #         else:
+        #             print("'View More' button not found or not visible.")
+        #             break
+        # except Exception as e:
+        #     print(f"No 'View More' found or error occurred: {e}. Proceeding with available content.")
+
         try:
-            while True:
+         while True:
+                # Try clicking "View More" if available
                 view_more_button = page.locator("div.more-cat-link p:has-text('View More')")
                 if view_more_button and view_more_button.is_visible():
                     print("Clicking 'View More' button...")
                     view_more_button.click()
                     time.sleep(2)
+                    continue  # Try again after expanding
+
+                # Try pagination if "View More" is not found
+                next_button = page.locator("a:has-text('Next'), a.pagination-next, button.next, a[rel='next']")
+                if next_button and next_button.is_visible():
+                    print("Navigating to next page...")
+                    next_button.click()
+                    page.wait_for_load_state("domcontentloaded")
+                    time.sleep(2)
                 else:
-                    print("'View More' button not found or not visible.")
+                    print("No more pages to navigate.")
                     break
         except Exception as e:
-            print(f"No 'View More' found or error occurred: {e}. Proceeding with available content.")
+            print(f"Pagination ended or error occurred: {e}")
 
-        # Try locating company blocks
-        company_blocks = page.locator("div.col-6.col-md-3.custom-margin")
+        company_blocks = page.locator(block_selector)
         count = company_blocks.count()
+
+        print(f"company_blocks {company_blocks}")
+        print(f"count {count}")      
+
 
         if count == 0:
             print("No company blocks found. Extracting single contact from the page.")
-
             block = page  # Use the full page as a block
 
-            company_name = extract_value(block, company_tags)
-            phone = extract_value(block, phone_tags, attr='href')
-            if phone and phone.startswith("tel:"):
-                phone = phone.replace("tel:", "").strip()
+            company_names = extract_value(block, "h3, h2, h1")
+            phones = extract_value(block, "a[href^='tel']")
+            emails = extract_value(block, "a[href^='mailto']")
 
-            email = extract_value(block, email_tags, attr='href')
-            if email and email.startswith("mailto:"):
-                email = email.replace("mailto:", "").strip()
+            for company_name, phone, email in zip_longest(company_names, phones, emails):
+                if phone and phone.startswith("tel:"):
+                    phone = phone.replace("tel:", "").strip()
 
-            print(f"Company: {company_name}, Phone: {phone}, Email: {email}")
+                if email and email.startswith("mailto:"):
+                    email = email.replace("mailto:", "").strip()
 
-            if company_name and phone:
-                save_to_db(conn, company_name, email, phone)
-            else:
-                print("Skipping entry: Missing company name or phone.")
+                print(f"Company: {company_name}, Phone: {phone}, Email: {email}")
+
+                if company_name and phone:
+                    save_to_db(conn, company_name, email, phone, url)
+                else:
+                    print("Skipping entry: Missing company name or phone.")
         else:
             print(f"Total company blocks found: {count}")
 
             for i in range(count):
                 block = company_blocks.nth(i)
 
-                company_name = extract_value(block, company_tags)
-                phone = extract_value(block, phone_tags, attr='href')
-                if phone and phone.startswith("tel:"):
-                    phone = phone.replace("tel:", "").strip()
+                company_names = extract_value(block, "h3, h2, h1")
+                phones = extract_value(block, "a[href^='tel']")
+                emails = extract_value(block, "a[href^='mailto']")
 
-                email = extract_value(block, email_tags, attr='href')
-                if email and email.startswith("mailto:"):
-                    email = email.replace("mailto:", "").strip()
+                for company_name, phone, email in zip_longest(company_names, phones, emails):
+                    if phone and phone.startswith("tel:"):
+                        phone = phone.replace("tel:", "").strip()
 
-                print(f"{i+1}. Company: {company_name}, Phone: {phone}, Email: {email}")
+                    if email and email.startswith("mailto:"):
+                        email = email.replace("mailto:", "").strip()
 
-                if not company_name and not phone:
-                    print(f"No company name and phone found for block {i+1}. Stopping the loop.")
-                    break
+                    print(f"{i+1}. Company: {company_name}, Phone: {phone}, Email: {email}")
 
-                if company_name and phone:
-                    save_to_db(conn, company_name, email, phone)
-                else:
-                    print(f"Skipping entry {i+1}: Missing company name or phone.")
+                    if company_name and phone:
+                        save_to_db(conn, company_name, email, phone)
+                    else:
+                        print(f"Skipping entry {i+1}: Missing company name or phone.")
 
         browser.close()
+
+# if __name__ == "__main__":
+#     conn = connect_to_db()
+#     url = input("Enter the website URL: ")
+    
+#     block_selector_input = input("Enter the block selector (leave empty to use default): ").strip()
+
+#     extract_multiple_contacts(url, conn, block_selector_input if block_selector_input else None)
+#     conn.close()
+
+
+def normalize_selector(selector_input):
+    if not selector_input:
+        return None
+    selector_input = selector_input.strip()
+
+    if selector_input.startswith('.') or selector_input.startswith('#'):
+        return selector_input  # Already a valid CSS selector
+
+    # Handle multiple class names like "col-6 col-md-3 custom-margin"
+    if ' ' in selector_input:
+        class_parts = selector_input.split()
+        return '.' + '.'.join(class_parts)
+
+    # Try ID, class, or tag
+    return f"#{selector_input}, .{selector_input}, {selector_input}"
 
 
 if __name__ == "__main__":
     conn = connect_to_db()
-    url = input("Enter the website URL: ")
-    tags_input = input("Enter the HTML tags to search (comma-separated): ")
-    tags = [tag.strip() for tag in tags_input.split(',')]
-    extract_multiple_contacts(url, tags, conn)
+    url = input("Enter the website URL: ").strip()
+    
+    block_selector_input = input("Enter the block selector (tag/class/id): ").strip()
+    block_selector = normalize_selector(block_selector_input)
+
+    extract_multiple_contacts(url, conn, block_selector)
     conn.close()
