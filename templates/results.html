@@ -21,10 +21,10 @@
             <tbody>
                 {% for url in urls %}
                 <tr>
-                    <td>{{ url[0] }}</td>
+                    <td>{{ url[1] }}</td>
                     <td>
                         <form action="{{ url_for('export_csv') }}" method="POST">
-                            <input type="hidden" name="url" value="{{ url[0] }}">
+                            <input type="hidden" name="url" value="{{ url[1] }}">
                             <button type="submit" class="btn btn-success btn-sm">Download CSV</button>
                         </form>
                     </td>

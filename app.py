@@ -44,7 +44,7 @@ def index():
 def results():
     conn = connect_to_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT compnay_url FROM distributors_contacts ORDER BY id DESC")
+    cursor.execute("SELECT id,company_url FROM distributors_contacts group by company_url ORDER BY id DESC")
     urls = cursor.fetchall()
     conn.close()
     return render_template("results.html", urls=urls)
@@ -56,7 +56,7 @@ def export_csv():
     conn = connect_to_db()
     cursor = conn.cursor()
     
-    cursor.execute("SELECT * FROM distributors_contacts WHERE compnay_url = %s", (url,))
+    cursor.execute("SELECT * FROM distributors_contacts WHERE company_url = %s", (url,))
     rows = cursor.fetchall()
     headers = [desc[0] for desc in cursor.description]
     
