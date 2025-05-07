@@ -7,7 +7,7 @@ def save_to_db(conn, company_name, email, phone,url):
     try:
         cursor = conn.cursor()
         insert_query = """
-            INSERT INTO distributors_contacts (compnay_url,company_name, email, phone)
+            INSERT INTO distributors_contacts (company_url,company_name, email, phone)
             VALUES (%s, %s, %s, %s)
         """
         cursor.execute(insert_query, (url,company_name, email, phone))
@@ -42,7 +42,8 @@ def extract_contact_from_page(page):
 
 def extract_multiple_contacts(url, conn, block_selector=None):
     block_selector = block_selector
-    # print(f"block_selector: {block_selector}")
+    print(f"block_selector: {block_selector}")
+
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)

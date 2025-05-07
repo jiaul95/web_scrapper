@@ -94,6 +94,9 @@
                 block_selector: $('#block_selector').val() // Send block selector
             },
             success: function(response) {
+
+                console.log("response",response);
+
                 $('#loader').hide();
 
                /* const isError = response.status === 'error';
@@ -103,7 +106,7 @@
                 .addClass(isError ? 'alert-danger' : 'alert-success'); */
 
                 console.log("response",response);
-
+                return;
                 if (response.status === 'success' && response.redirect_url) {
                 // Redirect to the given URL
                     window.location.href = response.redirect_url;
@@ -115,9 +118,24 @@
                 }
 
             },
-            error: function() {
+            // error: function() {
+            //     $('#loader').hide();
+            //     $('#message').removeClass('d-none').addClass('alert-danger').text('An unexpected error occurred.');
+            // }
+            error: function(xhr, status, error) {
                 $('#loader').hide();
-                $('#message').removeClass('d-none').addClass('alert-danger').text('An unexpected error occurred.');
+                
+                // Log full error details to console
+                console.error("XHR:", xhr);
+                console.error("Status:", status);
+                console.error("Error:", error);
+                    
+                return;
+                // Optional: Show a generic error message to the user
+                $('#message')
+                    .removeClass('d-none alert-success')
+                    .addClass('alert-danger')
+                    .text('An unexpected error occurred.');
             }
         });
     });
